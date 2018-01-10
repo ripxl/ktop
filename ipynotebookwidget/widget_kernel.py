@@ -1,17 +1,16 @@
 from pprint import pprint
 import traceback
 import uuid
-from pathlib import Path
 
 from tornado.ioloop import IOLoop
 
 import traitlets as T
-from nbformat.v4 import new_notebook, writes
 from jupyter_client.manager import start_new_kernel
 
 import ipywidgets as W
 
 from .utils import save_notebook
+
 
 class DefaultKernelView(W.HBox):
     def __init__(self, *args, **kwargs):
@@ -27,9 +26,8 @@ class DefaultKernelView(W.HBox):
         file_name = W.Text(description="📓", placeholder="Notebook Name")
 
         # style
-        shutdown.layout.max_width = \
-            rerun.layout.max_width = \
-            save.layout.max_width = "3em"
+        for btn in [shutdown, save, rerun]:
+            btn.layout.max_width = "3em"
         widgets.layout.flex = "1"
 
         # events
@@ -61,12 +59,11 @@ class Kernel(W.Widget):
     name = T.Unicode("python3").tag(sync=True)
     stdout = T.Tuple([]).tag(sync=True)
     stderr = T.Tuple([]).tag(sync=True)
-    progress = T.Float(0).tag(sync=True)
+    progress = T.Float(0.0).tag(sync=True)
     file_name = T.Unicode(allow_none=True).tag(sync=True)
+    ipynb = T.Dict(allow_none=True).tag(sync=True)
 
     widgets = T.Tuple([]).tag(sync=True, **W.widget_serialization)
-
-    last_cells = T.Tuple([]).tag(sync=True)
 
     _view_klass = DefaultKernelView
 
@@ -76,11 +73,11 @@ class Kernel(W.Widget):
         self._kernel_manager = None
 
     def save(self):
-        if not self.last_cells:
+        if not self.ipynb:
             return
         if not self.file_name:
             self.file_name = str(uuid.uuid4()).split("-")[0]
-        save_notebook(self.file_name, cells=self.last_cells)
+        save_notebook(self.file_name, self.ipynb)
 
     def shutdown(self):
         if self._kernel_manager:
@@ -88,26 +85,27 @@ class Kernel(W.Widget):
             self.widgets = []
             self.execution_state = "shutdown"
             self._kernel_manager.request_shutdown()
+            self._kernel_manager.cleanup()
             self.execution_state = "down"
         self._kernel_client = None
         self._kernel_manager = None
 
-    def run(self, cells=None, shutdown=False):
-        cells = cells or self.last_cells or []
-        self.last_cells = cells or []
+    def run(self, cell_nodes=None, shutdown=False):
+        cell_nodes = cell_nodes or self.ipynb["cells"] or []
 
         def _run():
-            self.progress = 0
+            self.progress = 0.0
+            if shutdown:
+                self.shutdown()
             if self._kernel_client is None:
-                # print(f"---\nSTARTING {self.name}\n---")
                 (
                     self._kernel_manager,
                     self._kernel_client
                 ) = start_new_kernel(kernel_name=self.name)
             try:
-                for i, cell in enumerate(cells):
-                    self.progress = len(cells) / (i + 1)
-                    self.run_one(cell)
+                for i, cell in enumerate(cell_nodes):
+                    progress = len(cell_nodes) / (i + 1)
+                    self.run_one(cell, progress=progress)
             except Exception as err:
                 print(f"ERROR {self.name} {err}")
                 print(traceback.format_exc())
@@ -117,30 +115,36 @@ class Kernel(W.Widget):
         IOLoop.instance().add_callback(_run)
         return self
 
-    def rerun(self):
+    def rerun(self, shutdown=False):
         self.shutdown()
-        self.run(cells=self.last_cells, shutdown=False)
+        self.run(shutdown=shutdown)
         return self
 
     def view(self, view_klass=None):
         return (view_klass or self._view_klass)(kernel=self)
 
-    def run_one(self, cell):
-        def _print(msg):
+    def run_one(self, cell, progress=None):
+        def _on_msg(msg):
             msg_type = msg['header']['msg_type']
 
             handler = getattr(self, "on_msg_{}".format(msg_type), None)
 
             if handler is not None:
+                # def _handle():
                 handler(msg, cell, msg["content"])
+                # IOLoop.instance().add_callback(_handle)
             else:
                 print(f"UNHANDLED MSG TYPE: {msg_type}\n---")
                 pprint(msg)
                 print("---\n")
-        return self._kernel_client.execute_interactive(
-            cell.source,
-            output_hook=_print
+        reply = self._kernel_client.execute_interactive(
+            "\n".join(cell["source"]),
+            output_hook=_on_msg
         )
+
+        if progress:
+            self.progress = progress
+        return reply
 
     def on_msg_stream(self, msg, cell, content):
         if content["name"] == "stdout":
@@ -151,14 +155,14 @@ class Kernel(W.Widget):
             print(f"UNHANDLED STREAM {content.name}", msg)
 
     def on_msg_execute_result(self, msg, cell, content):
-        cell.outputs += [{
+        cell["outputs"] += [{
             "data": content["data"],
             "output_type": "execute_result",
             "metadata": {}
         }]
 
     def on_msg_display_data(self, msg, cell, content):
-        cell.outputs += [{
+        cell["outputs"] += [{
             "data": content["data"],
             "output_type": "display_data",
             "metadata": {}

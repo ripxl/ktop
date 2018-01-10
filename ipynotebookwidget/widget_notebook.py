@@ -56,28 +56,46 @@ class Notebook(W.Widget):
             self.json = _json
             self.ipynb = json.loads(_json)
 
-    def run(self, cells=None, kernels=[], kernel_name=None, shutdown=True):
-        kernels = kernels or self.kernels or []
+    def run(self, cells=None, kernels=[], kernel_name=None, shutdown=True,
+            append=False, save=True, reuse=True, start=True):
 
-        if cells is not None:
-            cells = [
-                c if isinstance(c, NotebookNode) else new_code_cell(c)
+        if reuse:
+            kernels = kernels or self.kernels
+
+        kernels = kernels or []
+        print("KERNELS", [k.file_name for k in kernels])
+
+        if cells is None:
+            cell_nodes = self.ipynb["cells"]
+        else:
+            cell_nodes = [
+                c if isinstance(c, dict) else
+                new_code_cell(c) if isinstance(c, str) else
+                new_code_cell("\n".join(c))
                 for c in cells
             ]
+            if save:
+                if append:
+                    self.notebook_node.cells += cell_nodes
+                else:
+                    self.notebook_node.cells = cell_nodes
+                self._to_ipynb()
+            cell_nodes = self.ipynb["cells"]
 
-        cells = cells or self.notebook_node.cells or []
-
-        if not kernels:
-            kernels = [Kernel(
+        if not kernels and start:
+            kernel = Kernel(
                 name=kernel_name or self.kernel_name,
-                file_name=f"{self.file_name}_{self.kernel_count}"
-            )]
+                file_name=f"{self.file_name}_{self.kernel_count}",
+                ipynb=deepcopy(self.ipynb)
+            )
+            kernels = [kernel]
+            self.kernels += (kernel,)
             self.kernel_count += 1
 
+        print("-->KERNELS", [k.file_name for k in kernels])
+
         for kernel in kernels:
-            yield kernel.run(
-                cells=deepcopy(cells or self.notebook_node.cells or []),
-                shutdown=shutdown)
+            yield kernel.run(cell_nodes=cell_nodes, shutdown=shutdown)
 
     def save(self):
         if self.file_name is None:
