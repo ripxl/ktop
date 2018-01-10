@@ -1,0 +1,17 @@
+name: notebook-widget
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - ipywidgets
+  - notebook
+  - nodejs
+  - bqplot
+  - pandas
+  - python >=3.6
+  - setuptools
+  - pytest
+  - jupyterlab
+  - zeromq <4.2.3
