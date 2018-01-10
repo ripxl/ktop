@@ -63,7 +63,6 @@ class Notebook(W.Widget):
             kernels = kernels or self.kernels
 
         kernels = kernels or []
-        print("KERNELS", [k.file_name for k in kernels])
 
         if cells is None:
             cell_nodes = self.ipynb["cells"]
@@ -91,8 +90,6 @@ class Notebook(W.Widget):
             kernels = [kernel]
             self.kernels += (kernel,)
             self.kernel_count += 1
-
-        print("-->KERNELS", [k.file_name for k in kernels])
 
         for kernel in kernels:
             yield kernel.run(cell_nodes=cell_nodes, shutdown=shutdown)
