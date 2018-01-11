@@ -1,11 +1,18 @@
 from pprint import pprint
 import traceback
 import uuid
+import multiprocessing
+
+
+from concurrent.futures import ThreadPoolExecutor
 
 from tornado.ioloop import IOLoop
+from tornado.gen import coroutine
+from tornado.concurrent import run_on_executor
 
 import traitlets as T
 from jupyter_client.manager import start_new_kernel
+from jupyter_client.ioloop.manager import IOLoopKernelManager
 
 import ipywidgets as W
 
@@ -67,6 +74,8 @@ class Kernel(W.Widget):
 
     _view_klass = DefaultKernelView
 
+    executor = ThreadPoolExecutor(multiprocessing.cpu_count())
+
     def __init__(self, *args, **kwargs):
         super(Kernel, self).__init__(*args, **kwargs)
         self._kernel_client = None
@@ -93,27 +102,45 @@ class Kernel(W.Widget):
     def run(self, cell_nodes=None, shutdown=False):
         cell_nodes = cell_nodes or self.ipynb["cells"] or []
 
+        @coroutine
         def _run():
             self.progress = 0.0
             if shutdown:
                 self.shutdown()
             if self._kernel_client is None:
-                (
-                    self._kernel_manager,
-                    self._kernel_client
-                ) = start_new_kernel(kernel_name=self.name)
+                yield self.client()
             try:
                 for i, cell in enumerate(cell_nodes):
                     progress = len(cell_nodes) / (i + 1)
-                    self.run_one(cell, progress=progress)
+                    yield self.run_one(cell, progress=progress)
             except Exception as err:
                 print(f"ERROR {self.name} {err}")
                 print(traceback.format_exc())
             finally:
                 if shutdown:
                     self.shutdown()
+
         IOLoop.instance().add_callback(_run)
         return self
+
+    @run_on_executor
+    def client(self):
+        # (
+        #     self._kernel_manager,
+        #     self._kernel_client
+        # ) = start_new_kernel(kernel_name=self.name)
+        km = IOLoopKernelManager(kernel_name=self.name)
+        km.start_kernel()
+        kc = km.client()
+        kc.start_channels()
+        try:
+            kc.wait_for_ready(timeout=5)
+        except RuntimeError:
+            kc.stop_channels()
+            km.shutdown_kernel()
+            raise
+        self._kernel_manager = km
+        self._kernel_client = kc
 
     def rerun(self, shutdown=False):
         self.shutdown()
@@ -123,6 +150,7 @@ class Kernel(W.Widget):
     def view(self, view_klass=None):
         return (view_klass or self._view_klass)(kernel=self)
 
+    @run_on_executor
     def run_one(self, cell, progress=None):
         def _on_msg(msg):
             msg_type = msg['header']['msg_type']
@@ -130,9 +158,7 @@ class Kernel(W.Widget):
             handler = getattr(self, "on_msg_{}".format(msg_type), None)
 
             if handler is not None:
-                # def _handle():
                 handler(msg, cell, msg["content"])
-                # IOLoop.instance().add_callback(_handle)
             else:
                 print(f"UNHANDLED MSG TYPE: {msg_type}\n---")
                 pprint(msg)

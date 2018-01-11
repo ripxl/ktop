@@ -5,13 +5,12 @@ channels:
   - defaults
 
 dependencies:
-  - ipywidgets
-  - notebook
   - nodejs
-  - bqplot
+  - notebook
   - pandas
-  - python >=3.6
+  - python >=3.6,<3.7
   - setuptools
-  - pytest
-  - jupyterlab
-  - zeromq <4.2.3
+  - matplotlib
+  - jupyterlab_launcher
+  - giflib
+  - libpng
