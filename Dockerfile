@@ -41,12 +41,13 @@ RUN jupyter lab build \
 
 # copy in user's stuff
 COPY [ \
-  "src", \
-  "setup.py", \
+  "conda.recipe", \
+  "LICENSE", \
   "MANIFEST.in", \
-  "LICENSE",
-  "README.md",
-  "${HOME}" \
+  "README.md", \
+  "setup.py", \
+  "src", \
+  "/home/jovyan/" \
 ]
 
 # fix permissions
@@ -69,10 +70,15 @@ RUN ( \
   ) \
   || python setup.py develop
 
+# add the notebooks
 COPY [ \
-  "notebooks",
-  "${HOME}" \
+  "notebooks", \
+  "/home/jovyan/" \
 ]
 
+# fix permissions
 USER root
 RUN chown -R ${NB_UID} ${HOME}/notebooks
+
+# switch back to normal user
+USER ${NB_USER}

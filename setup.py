@@ -6,7 +6,7 @@ name = "ktop"
 brand = "ripxl"
 full_name = "Dead Pixel Collective"
 
-with open(join(dirname(__file__), name, "__init__.py")) as fp:
+with open(join(dirname(__file__), "src", name, "__init__.py")) as fp:
     for i, line in enumerate(fp.readlines()):
         if line.startswith("__version__ ="):
             __version__ = line.split(" ")[2][1:-2]
