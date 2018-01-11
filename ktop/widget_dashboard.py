@@ -19,8 +19,8 @@ class DefaultKernelView(W.VBox):
 
         # style
         for btn in [shutdown, save, rerun]:
-            btn.layout.max_width = "3em"
-        widgets.layout.flex = "1"
+            btn.layout.max_width = btn.layout.min_width = "3em"
+        widgets.layout.flex = "2"
 
         # events
         shutdown.on_click(lambda *x: kernel.shutdown())
@@ -64,7 +64,9 @@ class DefaultNotebookView(W.HBox):
         load = W.Button(icon="refresh")
 
         for btn in [save, load]:
-            btn.layout.max_width = "3em"
+            btn.layout.max_width = btn.layout.min_width = "3em"
+
+        name.layout.flex = "1"
 
         # events
 

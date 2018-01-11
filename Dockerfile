@@ -29,11 +29,14 @@ RUN jupyter lab build
 
 # install and validate labextensions
 RUN set -ex \
-  && jupyter labextension install  --no-build \
-     @jupyter-widgets/jupyterlab-manager \
   && jupyter labextension install --no-build \
-     bqplot \
-  && jupyter lab build \
+    @jupyterlab/hub-extension \
+  && jupyter labextension install --no-build \
+    @jupyter-widgets/jupyterlab-manager \
+  && jupyter labextension install --no-build \
+    bqplot
+
+RUN jupyter lab build \
   && jupyter labextension list
 
 # copy in user's stuff
@@ -47,11 +50,14 @@ RUN chown -R ${NB_UID} ${HOME}
 USER ${NB_USER}
 
 # build and install local conda package
-RUN (conda build -c conda-forge conda.recipe \
+RUN ( \
+    conda build -c conda-forge conda.recipe \
     && conda install --use-local -c conda-forge \
       ktop \
     && conda clean -tipsy \
     && conda list \
-    && mkdir -p /home/jovyan/conda.channel/noarch \
-    && cp -r /opt/conda/conda-bld/noarch/* /home/jovyan/conda.channel/noarch/) \
+    && mkdir -p /home/jovyan/conda.channel/linux-64 \
+    && cp -r /opt/conda/conda-bld/linux-64/* \
+      /home/jovyan/conda.channel/linux-64/ \
+  ) \
   || python setup.py develop
