@@ -2,7 +2,7 @@
 from os.path import dirname, join
 from setuptools import setup, find_packages
 
-name = "ipynotebookwidget"
+name = "ktop"
 brand = "ripxl"
 full_name = "Dead Pixel Collective"
 
@@ -16,7 +16,7 @@ setup(
     version=__version__,
     url=f"https://github.com/{brand}/{name}",
     author=full_name,
-    author_email=f"{brand}@groups.google.com",
+    author_email=f"{brand}@googlegroups.com",
     description="Use Notebooks and Kernels like Widgets",
     packages=find_packages(),
     install_requires=[

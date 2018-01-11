@@ -1,6 +1,6 @@
 .ipynb_checkpoints/
 __pycache__
-ipynotebookwidget.egg-info/
+*.egg-info/
 Untitled*.ipynb
 .notes
 dist/

@@ -19,49 +19,7 @@ import ipywidgets as W
 
 from .utils import save_notebook
 
-
-class DefaultKernelView(W.VBox):
-    def __init__(self, *args, **kwargs):
-        kernel = kwargs.pop("kernel")
-
-        super(DefaultKernelView, self).__init__(*args, **kwargs)
-
-        progress = W.FloatProgress(min=0.0, max=1.0)
-        widgets = W.VBox()
-        shutdown = W.Button(icon="trash")
-        rerun = W.Button(icon="play")
-        save = W.Button(icon="floppy-o")
-        file_name = W.Text(description="📓", placeholder="Notebook Name")
-
-        # style
-        for btn in [shutdown, save, rerun]:
-            btn.layout.max_width = "3em"
-        widgets.layout.flex = "1"
-
-        # events
-        shutdown.on_click(lambda *x: kernel.shutdown())
-        rerun.on_click(lambda *x: kernel.rerun())
-        save.on_click(lambda *x: kernel.save())
-
-        # links
-        T.dlink((kernel, "execution_state"), (progress, "description"))
-        T.dlink((kernel, "progress"), (progress, "value"))
-        T.dlink((kernel, "file_name"), (file_name, "value"))
-        T.dlink((kernel, "widgets"), (widgets, "children"),
-                lambda widgets: [
-                    w for w in widgets
-                    if "layout" in w.trait_names()])
-
-        self.children = [
-            W.HBox([
-                file_name,
-                save,
-                progress,
-                rerun,
-                shutdown,
-            ]),
-            widgets,
-        ]
+from .widget_dashboard import DefaultKernelView
 
 
 class Kernel(W.Widget):

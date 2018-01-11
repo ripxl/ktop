@@ -1,4 +1,4 @@
-name: notebook-widget
+name: ktop-dev
 
 channels:
   - conda-forge
