@@ -1,17 +1,18 @@
-from pprint import pprint
+from pprint import pformat
 import traceback
 import uuid
 import multiprocessing
-
 
 from concurrent.futures import ThreadPoolExecutor
 
 from tornado.ioloop import IOLoop
 from tornado.gen import coroutine
 from tornado.concurrent import run_on_executor
+from tornado.queues import Queue
+
+from zmq.eventloop.zmqstream import ZMQStream
 
 import traitlets as T
-from jupyter_client.manager import start_new_kernel
 from jupyter_client.ioloop.manager import IOLoopKernelManager
 
 import ipywidgets as W
@@ -72,14 +73,16 @@ class Kernel(W.Widget):
 
     widgets = T.Tuple([]).tag(sync=True, **W.widget_serialization)
 
-    _view_klass = DefaultKernelView
-
     executor = ThreadPoolExecutor(multiprocessing.cpu_count())
+
+    _view_klass = DefaultKernelView
 
     def __init__(self, *args, **kwargs):
         super(Kernel, self).__init__(*args, **kwargs)
         self._kernel_client = None
         self._kernel_manager = None
+        self._queue = Queue()
+        self._listening = False
 
     def save(self):
         if not self.ipynb:
@@ -90,7 +93,6 @@ class Kernel(W.Widget):
 
     def shutdown(self):
         if self._kernel_manager:
-            # print(f"---\nSHUTTING DOWN {self.name}\n---")
             self.widgets = []
             self.execution_state = "shutdown"
             self._kernel_manager.request_shutdown()
@@ -99,7 +101,7 @@ class Kernel(W.Widget):
         self._kernel_client = None
         self._kernel_manager = None
 
-    def run(self, cell_nodes=None, shutdown=False):
+    def run(self, cell_nodes=None, shutdown=None):
         cell_nodes = cell_nodes or self.ipynb["cells"] or []
 
         @coroutine
@@ -107,40 +109,77 @@ class Kernel(W.Widget):
             self.progress = 0.0
             if shutdown:
                 self.shutdown()
+                while self._queue.qsize():
+                    yield self._queue.get()
+
+            for cell in cell_nodes:
+                yield self._queue.put(cell)
+
             if self._kernel_client is None:
                 yield self.client()
+
+            if not self._listening:
+                IOLoop.instance().add_callback(self.listen)
+
             try:
-                for i, cell in enumerate(cell_nodes):
-                    progress = len(cell_nodes) / (i + 1)
-                    yield self.run_one(cell, progress=progress)
+                while self._queue.qsize():
+                    self._current_cell = yield self._queue.get()
+                    yield self.run_one(self._current_cell)
             except Exception as err:
                 print(f"ERROR {self.name} {err}")
                 print(traceback.format_exc())
             finally:
                 if shutdown:
                     self.shutdown()
+                    return
 
         IOLoop.instance().add_callback(_run)
         return self
 
+    @coroutine
+    def listen(self):
+        channels = [
+            self._kernel_client.iopub_channel,
+            self._kernel_client.shell_channel,
+        ]
+        for channel in channels:
+            self._listen_one(channel)
+        self._listening = True
+
+    def _listen_one(self, channel):
+        stream = ZMQStream(channel.socket)
+        handler = self._make_handler()
+
+        @stream.on_recv
+        def _listen(raw):
+            try:
+                ident, smsg = channel.session.feed_identities(raw)
+                msg = channel.session.deserialize(smsg)
+                IOLoop.instance().add_callback(handler, msg)
+            except Exception as err:
+                pass
+                # print("MSGERROR", err)
+                # print(traceback.format_exc())
+
     @run_on_executor
     def client(self):
-        # (
-        #     self._kernel_manager,
-        #     self._kernel_client
-        # ) = start_new_kernel(kernel_name=self.name)
-        km = IOLoopKernelManager(kernel_name=self.name)
+        km = self._kernel_manager
+        if km is None:
+            km = IOLoopKernelManager(kernel_name=self.name)
+            self._kernel_manager = km
+
         km.start_kernel()
-        kc = km.client()
+        kc = self._kernel_manager.client()
+        self._kernel_client = kc
+
         kc.start_channels()
+
         try:
             kc.wait_for_ready(timeout=5)
         except RuntimeError:
             kc.stop_channels()
             km.shutdown_kernel()
             raise
-        self._kernel_manager = km
-        self._kernel_client = kc
 
     def rerun(self, shutdown=False):
         self.shutdown()
@@ -150,27 +189,27 @@ class Kernel(W.Widget):
     def view(self, view_klass=None):
         return (view_klass or self._view_klass)(kernel=self)
 
-    @run_on_executor
-    def run_one(self, cell, progress=None):
+    def _make_handler(self, cell=None):
         def _on_msg(msg):
             msg_type = msg['header']['msg_type']
 
             handler = getattr(self, "on_msg_{}".format(msg_type), None)
 
             if handler is not None:
-                handler(msg, cell, msg["content"])
+                handler(msg,
+                        cell or getattr(self, "_current_cell"),
+                        msg["content"])
             else:
-                print(f"UNHANDLED MSG TYPE: {msg_type}\n---")
-                pprint(msg)
-                print("---\n")
-        reply = self._kernel_client.execute_interactive(
-            "\n".join(cell["source"]),
-            output_hook=_on_msg
-        )
+                self.log.warn(f"UNHANDLED MSG TYPE: {msg_type}\n---\n%s",
+                              pformat(msg))
+        return _on_msg
 
-        if progress:
-            self.progress = progress
-        return reply
+    @run_on_executor
+    def run_one(self, cell):
+        msg_id = self._kernel_client.execute(
+            "\n".join(cell["source"])
+        )
+        return msg_id
 
     def on_msg_stream(self, msg, cell, content):
         if content["name"] == "stdout":
@@ -178,7 +217,7 @@ class Kernel(W.Widget):
         elif content["name"] == "stderr":
             self.stderr += content["text"],
         else:
-            print(f"UNHANDLED STREAM {content.name}", msg)
+            self.log.warning(f"UNHANDLED STREAM {content.name}", msg)
 
     def on_msg_execute_result(self, msg, cell, content):
         cell["outputs"] += [{
@@ -198,6 +237,9 @@ class Kernel(W.Widget):
         self.execution_state = content["execution_state"]
 
     def on_msg_execute_input(self, msg, cell, content):
+        pass
+
+    def on_msg_execute_reply(self, msg, cell, content):
         pass
 
     def on_msg_comm_open(self, msg, cell, content):
@@ -241,17 +283,15 @@ class Kernel(W.Widget):
     def on_msg_comm_msg(self, msg, cell, content):
         method = content.get("data", {}).get("method")
         if method == "update":
-            # print("UPDATE", content["data"]["state"])
             for widget in self.widgets:
                 if widget.comm.comm_id == content["comm_id"]:
                     for k, v in content["data"]["state"].items():
                         setattr(widget, k, v)
 
         else:
-            print(f"UNKNOWN METHOD {method}\n---")
-            pprint(msg)
-            print("---")
+            self.log.warning(f"UNKNOWN METHOD {method}\n---\n%s",
+                             pformat(msg))
 
     def on_msg_error(self, msg, cell, content):
-        print(f"ERROR\n---")
-        pprint(msg)
+        self.log.error(f"ERROR\n---\n%s",
+                       pformat(msg))
