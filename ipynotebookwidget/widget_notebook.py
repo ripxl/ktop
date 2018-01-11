@@ -2,36 +2,44 @@ import json
 import traitlets as T
 from copy import deepcopy
 
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
+
 from nbformat.v4 import new_notebook, writes, new_code_cell
 from nbformat.notebooknode import NotebookNode
 
 import ipywidgets as W
 
 from .widget_kernel import Kernel
-from .utils import save_notebook
-
-try:
-    import pandas as pd
-except ImportError:
-    pd = None
+from .utils import save_notebook, load_notebook
+from .widget_dashboard import DefaultNotebookView
 
 from_json = W.widget_serialization["from_json"]
 
 
 class Notebook(W.Widget):
+    # path
     file_name = T.Unicode("Untitled", allow_none=True).tag(sync=True)
+    # name
     kernel_name = T.Unicode("python3").tag(sync=True)
     ipynb = T.Dict(allow_none=True).tag(sync=True)
     json = T.Unicode(allow_none=True).tag(sync=True)
     stdout = T.Tuple(allow_none=True).tag(sync=True)
     stderr = T.Tuple(allow_none=True).tag(sync=True)
     kernels = T.Tuple([]).tag(sync=True, **W.widget_serialization)
+
+    # convenience, won't stay around
     code_cells = T.Tuple([]).tag(sync=True)
 
     # "private" traitlets
+    # __data__
     notebook_node = T.Instance(NotebookNode, allow_none=True)
 
     kernel_count = T.Integer(0).tag(sync=True)
+
+    _view_klass = DefaultNotebookView
 
     def __init__(self, *args, **kwargs):
         if kwargs.get("notebook_node") is None:
@@ -43,6 +51,9 @@ class Notebook(W.Widget):
     def df(self):
         self._to_ipynb()
         return pd.io.json.json_normalize(self.ipynb["cells"])
+
+    def view(self, view_klass=None):
+        return (view_klass or self._view_klass)(notebook=self)
 
     @T.observe("code_cells")
     def _on_code_cells(self, _=None):
@@ -98,3 +109,9 @@ class Notebook(W.Widget):
         if self.file_name is None:
             raise ValueError("needs file_name")
         save_notebook(self.file_name, self.notebook_node)
+
+    def load(self):
+        if self.file_name is None:
+            raise ValueError("needs file_name")
+        self.notebook_node = load_notebook(self.file_name)
+        self._to_ipynb()

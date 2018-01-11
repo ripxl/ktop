@@ -1,5 +1,5 @@
 from pathlib import Path
-from nbformat.v4 import new_notebook, writes
+from nbformat.v4 import new_notebook, writes, reads
 
 
 def save_notebook(file_name, nb=None, cells=None):
@@ -16,3 +16,12 @@ def save_notebook(file_name, nb=None, cells=None):
         if nb is None:
             raise ValueError("not enough info to save")
         file_path.write_text(writes(nb, split_lines=False))
+
+
+def load_notebook(file_name):
+    root = Path(".")
+    file_path = (root / "{}.ipynb".format(file_name))
+    if root not in file_path.parents or not file_path.exists():
+        raise ValueError("load failed")
+    else:
+        return reads(file_path.read_text())

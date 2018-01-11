@@ -20,7 +20,7 @@ import ipywidgets as W
 from .utils import save_notebook
 
 
-class DefaultKernelView(W.HBox):
+class DefaultKernelView(W.VBox):
     def __init__(self, *args, **kwargs):
         kernel = kwargs.pop("kernel")
 
@@ -53,12 +53,14 @@ class DefaultKernelView(W.HBox):
                     if "layout" in w.trait_names()])
 
         self.children = [
-            file_name,
-            save,
-            progress,
-            rerun,
+            W.HBox([
+                file_name,
+                save,
+                progress,
+                rerun,
+                shutdown,
+            ]),
             widgets,
-            shutdown,
         ]
 
 
@@ -200,8 +202,9 @@ class Kernel(W.Widget):
                         cell or getattr(self, "_current_cell"),
                         msg["content"])
             else:
-                self.log.warn(f"UNHANDLED MSG TYPE: {msg_type}\n---\n%s",
-                              pformat(msg))
+                self.log.warn(f"UNHANDLED MSG TYPE: {msg_type}\n---\n%s\n%s",
+                              pformat(msg),
+                              f"You should implement on_msg_{msg_type}")
         return _on_msg
 
     @run_on_executor
@@ -240,6 +243,9 @@ class Kernel(W.Widget):
         pass
 
     def on_msg_execute_reply(self, msg, cell, content):
+        pass
+
+    def on_msg_comm_reply(self, msg, cell, content):
         pass
 
     def on_msg_comm_open(self, msg, cell, content):
@@ -295,3 +301,6 @@ class Kernel(W.Widget):
     def on_msg_error(self, msg, cell, content):
         self.log.error(f"ERROR\n---\n%s",
                        pformat(msg))
+
+    def on_msg_shutdown_replay(self, msg, cell, content):
+        self.execution_state = "shutdown"
