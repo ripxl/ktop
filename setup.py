@@ -18,7 +18,8 @@ setup(
     author=full_name,
     author_email=f"{brand}@googlegroups.com",
     description="Use Notebooks and Kernels like Widgets",
-    packages=find_packages(),
+    packages=find_packages("src"),
+    package_dir={"": "src"},
     install_requires=[
         "ipywidgets >=7.0.0",
         "jupyter_client >=5.2.1",

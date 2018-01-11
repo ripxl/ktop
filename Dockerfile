@@ -40,7 +40,14 @@ RUN jupyter lab build \
   && jupyter labextension list
 
 # copy in user's stuff
-COPY . ${HOME}
+COPY [ \
+  "src", \
+  "setup.py", \
+  "MANIFEST.in", \
+  "LICENSE",
+  "README.md",
+  "${HOME}" \
+]
 
 # fix permissions
 USER root
@@ -61,3 +68,11 @@ RUN ( \
       /home/jovyan/conda.channel/linux-64/ \
   ) \
   || python setup.py develop
+
+COPY [ \
+  "notebooks",
+  "${HOME}" \
+]
+
+USER root
+RUN chown -R ${NB_UID} ${HOME}/notebooks
