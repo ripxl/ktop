@@ -1,4 +1,4 @@
-{% set name = "KTOP" %}
+{% set name = "ktop" %}
 {% set version = "0.1.0" %}
 
 package:

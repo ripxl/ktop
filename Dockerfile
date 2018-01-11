@@ -4,18 +4,18 @@ FROM jupyter/scipy-notebook:400c69639ea5
 RUN conda install -n root git
 
 # contains everything it reliably can
-COPY environment-dev.yml /home/jovyan/environment-dev.yml
+COPY environment-dev.yml /home/jovyan/ktop/environment-dev.yml
 RUN conda env update --quiet \
     -n root \
-    --file /home/jovyan/environment-dev.yml \
+    --file /home/jovyan/ktop/environment-dev.yml \
   && conda clean -tipsy \
   && conda list
 
 # install things with demonstrated install weirdness
-COPY environment-jupyter.yml /home/jovyan/environment-jupyter.yml
+COPY environment-jupyter.yml /home/jovyan/ktop/environment-jupyter.yml
 RUN conda env update --quiet \
     -n root \
-    --file /home/jovyan/environment-jupyter.yml \
+    --file /home/jovyan/ktop/environment-jupyter.yml \
   && conda clean -tipsy \
   && conda list
 
@@ -41,13 +41,21 @@ RUN jupyter lab build \
 
 # copy in user's stuff
 COPY [ \
-  "conda.recipe", \
   "LICENSE", \
   "MANIFEST.in", \
   "README.md", \
   "setup.py", \
-  "src", \
-  "/home/jovyan/" \
+  "/home/jovyan/ktop/" \
+]
+
+COPY [ \
+  "src/", \
+  "/home/jovyan/ktop/src" \
+]
+
+COPY  [ \
+  "conda.recipe/", \
+  "/home/jovyan/ktop/conda.recipe" \
 ]
 
 # fix permissions
@@ -57,23 +65,19 @@ RUN chown -R ${NB_UID} ${HOME}
 # switch back to normal user
 USER ${NB_USER}
 
-# build and install local conda package
-RUN ( \
-    conda build -c conda-forge conda.recipe \
-    && conda install --use-local -c conda-forge \
-      ktop \
-    && conda clean -tipsy \
-    && conda list \
-    && mkdir -p /home/jovyan/conda.channel/linux-64 \
-    && cp -r /opt/conda/conda-bld/linux-64/* \
-      /home/jovyan/conda.channel/linux-64/ \
-  ) \
+# attempt build and install local conda package
+RUN ls -lathr /home/jovyan/ktop
+RUN cd /home/jovyan/ktop && \
+  conda-build -c conda-forge conda.recipe
+RUN find /opt/conda/conda-bld
+RUN cd /home/jovyan/ktop \
+  && conda install --use-local -c conda-forge ktop \
   || python setup.py develop
 
 # add the notebooks
 COPY [ \
   "notebooks", \
-  "/home/jovyan/" \
+  "/home/jovyan/notebooks" \
 ]
 
 # fix permissions
