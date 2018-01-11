@@ -3,6 +3,8 @@ import ipywidgets as W
 
 
 class DefaultKernelView(W.VBox):
+    """ Show a kernel
+    """
     def __init__(self, *args, **kwargs):
         kernel = kwargs.pop("kernel")
 
@@ -47,6 +49,9 @@ class DefaultKernelView(W.VBox):
 
 
 class DefaultNotebookView(W.HBox):
+    """ Show a Notebook and all of its kernels
+    """
+
     def __init__(self, *args, **kwargs):
         notebook = kwargs.pop("notebook")
 

@@ -27,4 +27,5 @@ setup(
     license="BSD-3-Clause",
     include_package_data=True,
     zip_safe=False,
+    keywords="jupyter notebook kernel widget ipywidgets traitlets ipynb",
 )

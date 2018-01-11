@@ -1,4 +1,4 @@
-name: ktop-dev
+name: _ktop-dev
 
 channels:
   - conda-forge
@@ -8,3 +8,5 @@ dependencies:
   - jupyterlab
   - ipywidgets
   - bqplot
+  - pip:
+    - rise

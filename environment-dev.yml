@@ -1,16 +1,18 @@
-name: ktop-dev
+name: _ktop-dev
 
 channels:
   - conda-forge
   - defaults
 
 dependencies:
+  - conda-build <3
+  - constructor
+  - giflib
+  - jupyterlab_launcher
+  - libpng
+  - matplotlib
   - nodejs
   - notebook
   - pandas
   - python >=3.6,<3.7
   - setuptools
-  - matplotlib
-  - jupyterlab_launcher
-  - giflib
-  - libpng

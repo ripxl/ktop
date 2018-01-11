@@ -23,6 +23,8 @@ from .widget_dashboard import DefaultKernelView
 
 
 class Kernel(W.Widget):
+    """ An evented kernel
+    """
     execution_state = T.Unicode(allow_none=True).tag(sync=True)
     name = T.Unicode("python3").tag(sync=True)
     stdout = T.Tuple([]).tag(sync=True)

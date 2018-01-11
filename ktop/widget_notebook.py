@@ -20,6 +20,9 @@ from_json = W.widget_serialization["from_json"]
 
 
 class Notebook(W.Widget):
+    """ An evented notebook, which may have more than one kernel
+    """
+
     # path
     file_name = T.Unicode("Untitled", allow_none=True).tag(sync=True)
     # name
