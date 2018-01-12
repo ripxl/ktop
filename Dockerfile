@@ -1,7 +1,7 @@
 FROM jupyter/scipy-notebook:400c69639ea5
 
 # handle non-project deps
-RUN conda install -n root git
+RUN conda install -y -n root git
 
 # contains everything it reliably can
 COPY environment-dev.yml /home/jovyan/ktop/environment-dev.yml
@@ -66,10 +66,8 @@ RUN chown -R ${NB_UID} ${HOME}
 USER ${NB_USER}
 
 # attempt build and install local conda package
-RUN ls -lathr /home/jovyan/ktop
 RUN cd /home/jovyan/ktop && \
   conda-build -c conda-forge conda.recipe
-RUN find /opt/conda/conda-bld
 RUN cd /home/jovyan/ktop \
   && conda install --use-local -c conda-forge ktop \
   || python setup.py develop

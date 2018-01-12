@@ -16,8 +16,6 @@ from .widget_kernel import Kernel
 from .utils import save_notebook, load_notebook
 from .widget_dashboard import DefaultNotebookView
 
-from_json = W.widget_serialization["from_json"]
-
 
 class Notebook(W.Widget):
     """ An evented notebook, which may have more than one kernel
@@ -93,7 +91,7 @@ class Notebook(W.Widget):
                 else:
                     self.notebook_node.cells = cell_nodes
                 self._to_ipynb()
-            cell_nodes = self.ipynb["cells"]
+                cell_nodes = self.ipynb["cells"]
 
         if not kernels and start:
             kernel = Kernel(
@@ -112,9 +110,11 @@ class Notebook(W.Widget):
         if self.file_name is None:
             raise ValueError("needs file_name")
         save_notebook(self.file_name, self.notebook_node)
+        return self
 
     def load(self):
         if self.file_name is None:
             raise ValueError("needs file_name")
         self.notebook_node = load_notebook(self.file_name)
         self._to_ipynb()
+        return self

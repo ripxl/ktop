@@ -1,8 +1,15 @@
 import traitlets as T
 import ipywidgets as W
 
+from nbformat.v4 import new_code_cell
 
-class DefaultKernelView(W.VBox):
+
+def sized(*btns):
+    for btn in btns:
+        btn.layout.max_width = btn.layout.min_width = "3em"
+
+
+class DefaultKernelView(W.HBox):
     """ Show a kernel
     """
     def __init__(self, *args, **kwargs):
@@ -10,17 +17,17 @@ class DefaultKernelView(W.VBox):
 
         super(DefaultKernelView, self).__init__(*args, **kwargs)
 
-        progress = W.FloatProgress(min=0.0, max=1.0)
-        widgets = W.VBox()
+        widgets = W.HBox()
         shutdown = W.Button(icon="trash")
         rerun = W.Button(icon="play")
         save = W.Button(icon="floppy-o")
-        file_name = W.Text(description="📓", placeholder="Notebook Name")
+        file_name = W.Text(placeholder="Notebook Name")
+
 
         # style
-        for btn in [shutdown, save, rerun]:
-            btn.layout.max_width = btn.layout.min_width = "3em"
+        sized(shutdown, save, rerun)
         widgets.layout.flex = "2"
+        file_name.layout.width = "auto"
 
         # events
         shutdown.on_click(lambda *x: kernel.shutdown())
@@ -28,8 +35,7 @@ class DefaultKernelView(W.VBox):
         save.on_click(lambda *x: kernel.save())
 
         # links
-        T.dlink((kernel, "execution_state"), (progress, "description"))
-        T.dlink((kernel, "progress"), (progress, "value"))
+        # T.dlink((kernel, "execution_state"), (progress, "description"))
         T.dlink((kernel, "file_name"), (file_name, "value"))
         T.dlink((kernel, "widgets"), (widgets, "children"),
                 lambda widgets: [
@@ -37,18 +43,51 @@ class DefaultKernelView(W.VBox):
                     if "layout" in w.trait_names()])
 
         self.children = [
-            W.HBox([
+            W.VBox([
+                W.HBox([
+                    save,
+                    rerun,
+                    shutdown,
+                ]),
                 file_name,
-                save,
-                progress,
-                rerun,
-                shutdown,
             ]),
             widgets,
         ]
 
 
-class DefaultNotebookView(W.HBox):
+class DefaultCellView(W.VBox):
+    source = T.Unicode("").tag(sync=True)
+
+    def __init__(self, *args, **kwargs):
+        cell = kwargs.pop("cell")
+        notebook = kwargs.pop("notebook")
+        kwargs["source"] = "\n".join(cell["source"])
+
+        super(DefaultCellView, self).__init__(*args, **kwargs)
+
+        source = W.Textarea(self.source)
+        run = W.Button(icon="forward")
+
+        # style
+        sized(run)
+        source.layout.width = "auto"
+
+        @run.on_click
+        def _run(x):
+            list(notebook.run(
+                 cells=[new_code_cell([self.source])],
+                 shutdown=False,
+                 save=False))
+
+        T.link((self, "source"), (source, "value"))
+
+        self.children = [
+            W.HBox([run]),
+            source,
+        ]
+
+
+class DefaultNotebookView(W.VBox):
     """ Show a Notebook and all of its kernels
     """
 
@@ -59,49 +98,69 @@ class DefaultNotebookView(W.HBox):
 
         name = W.Text()
         kernels = W.VBox()
-        cells = W.VBox()
+        cells = W.HBox()
+        add = W.Button(icon="plus-square-o")
         save = W.Button(icon="floppy-o")
         load = W.Button(icon="refresh")
 
-        for btn in [save, load]:
-            btn.layout.max_width = btn.layout.min_width = "3em"
-
+        # style
+        sized(save, load, add)
         name.layout.flex = "1"
+        name.layout.width = "auto"
 
         # events
 
         save.on_click(lambda *x: notebook.save())
         load.on_click(lambda *x: notebook.load())
 
+        @add.on_click
+        def _add(evt):
+            notebook.notebook_node.cells += [new_code_cell()]
+            notebook._to_ipynb()
+
+        def _update(i, child):
+            def _do(change):
+                notebook.notebook_node.cells[i].source = \
+                    child.source.strip().split("\n")
+
+                notebook.ipynb["cells"][i]["source"] = child.source.split("\n")
+            return _do
+
         def _make_children(ipynb):
-            return [
-                W.HTML("<code>\n{}\n</code>".format(
-                    "\n".join(cell.get("source", []))))
+            children = [
+                DefaultCellView(cell=cell, notebook=notebook)
                 for cell in ipynb["cells"]
             ]
+
+            for i, child in enumerate(children):
+                child.observe(_update(i, child))
+            return children
 
         T.link((notebook, "file_name"), (name, "value"))
         T.dlink((notebook, "kernels"), (kernels, "children"),
                 lambda children: [c.view() for c in children])
         T.dlink((notebook, "ipynb"), (cells, "children"), _make_children)
 
-        left = W.VBox([
-            W.HBox([
+        top = W.HBox([
+            W.VBox([
+                W.HBox([
+                    save,
+                    load,
+                    add,
+                ]),
                 name,
-                save,
-                load,
             ]),
             cells,
         ])
 
-        right = W.VBox([
+        bottom = W.VBox([
             kernels,
         ])
 
-        left.layout.flex = "1"
-        right.layout.flex = "1.6"
+        top.layout.flex = "1"
+        bottom.layout.flex = "4"
 
         self.children = [
-            left,
-            right,
+            top,
+            bottom,
         ]

@@ -22,13 +22,14 @@ from .utils import save_notebook
 from .widget_dashboard import DefaultKernelView
 
 
+from_json = W.widget_serialization["from_json"]
+
+
 class Kernel(W.Widget):
     """ An evented kernel
     """
     execution_state = T.Unicode(allow_none=True).tag(sync=True)
     name = T.Unicode("python3").tag(sync=True)
-    stdout = T.Tuple([]).tag(sync=True)
-    stderr = T.Tuple([]).tag(sync=True)
     progress = T.Float(0.0).tag(sync=True)
     file_name = T.Unicode(allow_none=True).tag(sync=True)
     ipynb = T.Dict(allow_none=True).tag(sync=True)
@@ -175,12 +176,9 @@ class Kernel(W.Widget):
         return msg_id
 
     def on_msg_stream(self, msg, cell, content):
-        if content["name"] == "stdout":
-            self.stdout += content["text"],
-        elif content["name"] == "stderr":
-            self.stderr += content["text"],
-        else:
-            self.log.warning(f"UNHANDLED STREAM {content.name}", msg)
+        output = dict(output_type="stream")
+        output.update(content)
+        cell["outputs"] += [output]
 
     def on_msg_execute_result(self, msg, cell, content):
         cell["outputs"] += [{
@@ -212,6 +210,29 @@ class Kernel(W.Widget):
         comm_id = content["comm_id"]
         state, buffer_paths, buffers = W.widgets.widget._remove_buffers(
             content["data"]["state"])
+
+        # as_json = from_json(state, state)
+        # print("AS_JSON")
+        # print(as_json)
+        #
+        # def _sub_widget(obj):
+        #     if isinstance(obj, dict):
+        #         return {k: _sub_widget(c) for k, c in obj.items()}
+        #     elif isinstance(obj, str):
+        #         print("OBJ", obj)
+        #         if obj.startswith("IPY_MODEL_"):
+        #             print("OBJ_ID", obj[10:])
+        #             obj_id = obj.split("_")[2]
+        #             return W.Widget.widgets.get(obj_id)
+        #         return obj
+        #     elif isinstance(obj, list):
+        #         return [_sub_widget(c) for c in obj]
+        #     else:
+        #         return obj
+
+        # so for bqplot, there are these deep things
+        # subbed = _sub_widget(state)
+        # print("SUBBED", subbed)
 
         comm = W.widgets.widget.Comm(
             comm_id=comm_id,
@@ -259,8 +280,11 @@ class Kernel(W.Widget):
                              pformat(msg))
 
     def on_msg_error(self, msg, cell, content):
+        output = dict(output_type="error")
+        output.update(content)
+        cell["outputs"] += [output]
         self.log.error(f"ERROR\n---\n%s",
                        pformat(msg))
 
-    def on_msg_shutdown_replay(self, msg, cell, content):
+    def on_msg_shutdown_reply(self, msg, cell, content):
         self.execution_state = "shutdown"
