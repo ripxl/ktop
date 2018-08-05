@@ -15,6 +15,7 @@ import ipywidgets as W
 from .widget_kernel import Kernel
 from .utils import save_notebook, load_notebook
 from .widget_dashboard import DefaultNotebookView
+from .widget_nbformat import NBFormat
 
 
 class Notebook(W.Widget):
@@ -24,49 +25,18 @@ class Notebook(W.Widget):
     # path
     file_name = T.Unicode("Untitled", allow_none=True).tag(sync=True)
     # name
-    kernel_name = T.Unicode("python3").tag(sync=True)
-    ipynb = T.Dict(allow_none=True).tag(sync=True)
-    json = T.Unicode(allow_none=True).tag(sync=True)
-    stdout = T.Tuple(allow_none=True).tag(sync=True)
-    stderr = T.Tuple(allow_none=True).tag(sync=True)
+    nbformat = T.Instance(NBFormat).tag(sync=True, **W.widget_serialization)
     kernels = T.Tuple([]).tag(sync=True, **W.widget_serialization)
-
-    # convenience, won't stay around
-    code_cells = T.Tuple([]).tag(sync=True)
-
-    # "private" traitlets
-    # __data__
-    notebook_node = T.Instance(NotebookNode, allow_none=True)
-
     kernel_count = T.Integer(0).tag(sync=True)
 
     _view_klass = DefaultNotebookView
 
     def __init__(self, *args, **kwargs):
-        if kwargs.get("notebook_node") is None:
-            kwargs["notebook_node"] = new_notebook()
-
+        kwargs["nbformat"] = kwargs.get("nbformat") or NBFormat()
         super(Notebook, self).__init__(*args, **kwargs)
-
-    @property
-    def df(self):
-        self._to_ipynb()
-        return pd.io.json.json_normalize(self.ipynb["cells"])
 
     def view(self, view_klass=None):
         return (view_klass or self._view_klass)(notebook=self)
-
-    @T.observe("code_cells")
-    def _on_code_cells(self, _=None):
-        self.notebook_node.cells = list(map(new_code_cell, self.code_cells))
-        self._to_ipynb()
-
-    @T.observe("notebook_node")
-    def _to_ipynb(self, _=None):
-        _json = writes(self.notebook_node)
-        if _json != self.json:
-            self.json = _json
-            self.ipynb = json.loads(_json)
 
     def run(self, cells=None, kernels=[], kernel_name=None, shutdown=True,
             append=False, save=True, reuse=True, start=True):
@@ -77,44 +47,36 @@ class Notebook(W.Widget):
         kernels = kernels or []
 
         if cells is None:
-            cell_nodes = self.ipynb["cells"]
-        else:
-            cell_nodes = [
-                c if isinstance(c, dict) else
-                new_code_cell(c) if isinstance(c, str) else
-                new_code_cell("\n".join(c))
-                for c in cells
-            ]
-            if save:
-                if append:
-                    self.notebook_node.cells += cell_nodes
-                else:
-                    self.notebook_node.cells = cell_nodes
-                self._to_ipynb()
-                cell_nodes = self.ipynb["cells"]
+            cells = self.nbformat.cells
+
+        if kernel_name is None:
+            try:
+                kernel_name = self.nbformat.metadata["kernelspec"]["name"]
+            except Exception:
+                pass
 
         if not kernels and start:
             kernel = Kernel(
-                name=kernel_name or self.kernel_name,
-                file_name=f"{self.file_name}_{self.kernel_count}",
-                ipynb=deepcopy(self.ipynb)
+                name=kernel_name or "python3",
+                file_name=f"{self.file_name}_{self.kernel_count}"
             )
             kernels = [kernel]
             self.kernels += (kernel,)
             self.kernel_count += 1
 
         for kernel in kernels:
-            yield kernel.run(cell_nodes=cell_nodes, shutdown=shutdown)
+            yield kernel.run(cells=cells, shutdown=shutdown)
 
     def save(self):
         if self.file_name is None:
             raise ValueError("needs file_name")
-        save_notebook(self.file_name, self.notebook_node)
+        save_notebook(self.file_name, self.nbformat._to_node())
         return self
 
     def load(self):
         if self.file_name is None:
             raise ValueError("needs file_name")
-        self.notebook_node = load_notebook(self.file_name)
-        self._to_ipynb()
+        nbf = NBFormat()
+        nbf.node = load_notebook(self.file_name)
+        self.nbformat = nbf
         return self

@@ -32,6 +32,5 @@ def load_notebook(file_name):
     """ a convenience wrapper around a "safe" notebook load
     """
     file_path = check_path(file_name)
-
     if file_path.exists():
         return reads(file_path.read_text())

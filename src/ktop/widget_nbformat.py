@@ -22,7 +22,7 @@ class Node(W.Widget):
         for trait_name in self.trait_names():
             if trait_name.startswith("_"):
                 continue
-            elif trait_name in ["comm", "keys", "log"]:
+            elif trait_name in ["comm", "keys", "log", "node"]:
                 continue
 
             value = getattr(self, trait_name)
@@ -52,6 +52,18 @@ class Output(Node):
             display_data=DisplayData,
         )[node.output_type](**node)
 
+    def view(self):
+        text = W.Label(self.output_type)
+
+        def up(change):
+            text.value = "T:" + self.output_type
+
+        self.observe(up, names=None)
+
+        return W.HBox([
+            text,
+        ])
+
 
 class Dataful(Output):
     data = T.Dict().tag(sync=True)
@@ -76,6 +88,21 @@ class Stream(Output):
     name = T.Unicode(allow_none=True).tag(sync=True)
     text = T.Unicode("").tag(sync=True)
 
+    def view(self):
+        text = W.Label(self.text)
+        name = W.Label(self.name)
+
+        def up(change):
+            text.value = self.text
+            name.value = self.name
+
+        self.observe(up, names=["text", "name"])
+
+        return W.HBox([
+            name,
+            text,
+        ])
+
 
 class Cell(Node):
     cell_type = T.Unicode().tag(sync=True)
@@ -95,7 +122,7 @@ class Cell(Node):
 
 class Code(Cell):
     outputs = T.Tuple([]).tag(sync=True, **W.widget_serialization)
-    execution_count = T.Integer(0).tag(sync=True)
+    execution_count = T.Integer(0, allow_none=True).tag(sync=True)
 
     def __init__(self, *args, **kwargs):
         outputs = kwargs.get("outputs", [])
