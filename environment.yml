@@ -1,0 +1,19 @@
+name: ktop-demo
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - ipywidgets >=7.3.2,<7.4
+  - python >=3.6,<3.7
+  # demo stuff
+  - nomkl
+  - numpy
+  - pandas
+  - matplotlib
+  - jupyterlab >=0.33,<0.34
+  # demo build stuff
+  - nodejs >=8,<9
+  - flake8
+  - black

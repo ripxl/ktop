@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -ex
+black -l79 src
+flake8 src
+
+python -m pip install -e . --ignore-installed --no-deps
+
+pip show ktop
+
+#jupyter labextension install \
+#  @jupyter-widgets/jupyterlab-manager@0.36.0 \
+#  --no-build
+
+#jupyter lab build --dev

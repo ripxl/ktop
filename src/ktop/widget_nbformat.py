@@ -30,10 +30,7 @@ class Node(W.Widget):
             if isinstance(value, (list, tuple)):
                 value = list(map(node_or_ident, value))
             elif isinstance(value, (dict)):
-                value = {
-                    k: node_or_ident(v)
-                    for k, v in value.items()
-                }
+                value = {k: node_or_ident(v) for k, v in value.items()}
 
             traits[trait_name] = value
 
@@ -51,18 +48,6 @@ class Output(Node):
             stream=Stream,
             display_data=DisplayData,
         )[node.output_type](**node)
-
-    def view(self):
-        text = W.Label(self.output_type)
-
-        def up(change):
-            text.value = "T:" + self.output_type
-
-        self.observe(up, names=None)
-
-        return W.HBox([
-            text,
-        ])
 
 
 class Dataful(Output):
@@ -88,21 +73,6 @@ class Stream(Output):
     name = T.Unicode(allow_none=True).tag(sync=True)
     text = T.Unicode("").tag(sync=True)
 
-    def view(self):
-        text = W.Label(self.text)
-        name = W.Label(self.name)
-
-        def up(change):
-            text.value = self.text
-            name.value = self.name
-
-        self.observe(up, names=["text", "name"])
-
-        return W.HBox([
-            name,
-            text,
-        ])
-
 
 class Cell(Node):
     cell_type = T.Unicode().tag(sync=True)
@@ -111,37 +81,52 @@ class Cell(Node):
 
     @classmethod
     def from_node(cls, node):
-        cell_types = dict(
-            markdown=Markdown,
-            code=Code,
-            raw=Raw
-        )
+        cell_types = dict(markdown=Markdown, code=Code, raw=Raw)
 
         return cell_types[node.cell_type](**node)
 
 
 class Code(Cell):
+    cell_type = T.Unicode("code").tag(sync=True)
     outputs = T.Tuple([]).tag(sync=True, **W.widget_serialization)
     execution_count = T.Integer(0, allow_none=True).tag(sync=True)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, source=None, *args, **kwargs):
         outputs = kwargs.get("outputs", [])
 
         if outputs:
-            kwargs["outputs"] = [
-                Output.from_node(o)
-                for o in outputs
-            ]
+            kwargs["outputs"] = [Output.from_node(o) for o in outputs]
 
-        super(Code, self).__init__(*args, **kwargs)
+        super(Code, self).__init__(source=source, *args, **kwargs)
+
+    def copy(self):
+        return Code(
+            cell_type=self.cell_type,
+            metadata=dict(self.metadata),
+            source=self.source,
+        )
 
 
 class Raw(Cell):
-    pass
+    cell_type = T.Unicode("raw").tag(sync=True)
+
+    def copy(self):
+        return Raw(
+            cell_type=self.cell_type,
+            metadata=dict(self.metadata),
+            source=self.source,
+        )
 
 
 class Markdown(Cell):
-    pass
+    cell_type = T.Unicode("markdown").tag(sync=True)
+
+    def copy(self):
+        return Markdown(
+            cell_type=self.cell_type,
+            metadata=dict(self.metadata),
+            source=self.source,
+        )
 
 
 class NBFormat(Node):
