@@ -1,6 +1,6 @@
 from pprint import pformat
 import traceback
-import uuid
+import asyncio
 import multiprocessing
 
 from concurrent.futures import ThreadPoolExecutor
@@ -17,41 +17,32 @@ from jupyter_client.ioloop.manager import IOLoopKernelManager
 
 import ipywidgets as W
 
-from .utils import save_notebook
+from . import widget_nbformat as NB
 
-from .widget_dashboard import DefaultKernelView
+from_json = W.widget_serialization["from_json"]
 
 
 class Kernel(W.Widget):
     """ An evented kernel
     """
+
     execution_state = T.Unicode(allow_none=True).tag(sync=True)
     name = T.Unicode("python3").tag(sync=True)
-    stdout = T.Tuple([]).tag(sync=True)
-    stderr = T.Tuple([]).tag(sync=True)
     progress = T.Float(0.0).tag(sync=True)
     file_name = T.Unicode(allow_none=True).tag(sync=True)
-    ipynb = T.Dict(allow_none=True).tag(sync=True)
+    nbformat = T.Instance(NB.NBFormat).tag(sync=True, **W.widget_serialization)
 
     widgets = T.Tuple([]).tag(sync=True, **W.widget_serialization)
 
     executor = ThreadPoolExecutor(multiprocessing.cpu_count())
 
-    _view_klass = DefaultKernelView
-
     def __init__(self, *args, **kwargs):
+        kwargs["nbformat"] = kwargs.get("nbformat") or NB.NBFormat()
         super(Kernel, self).__init__(*args, **kwargs)
         self._kernel_client = None
         self._kernel_manager = None
         self._queue = Queue()
         self._listening = False
-
-    def save(self):
-        if not self.ipynb:
-            return
-        if not self.file_name:
-            self.file_name = str(uuid.uuid4()).split("-")[0]
-        save_notebook(self.file_name, self.ipynb)
 
     def shutdown(self):
         if self._kernel_manager:
@@ -63,8 +54,8 @@ class Kernel(W.Widget):
         self._kernel_client = None
         self._kernel_manager = None
 
-    def run(self, cell_nodes=None, shutdown=None):
-        cell_nodes = cell_nodes or self.ipynb["cells"] or []
+    def run(self, cells, shutdown=None):
+        cells = self.nbformat.cells = [cell.copy() for cell in cells]
 
         @coroutine
         def _run():
@@ -74,7 +65,7 @@ class Kernel(W.Widget):
                 while self._queue.qsize():
                     yield self._queue.get()
 
-            for cell in cell_nodes:
+            for cell in cells:
                 yield self._queue.put(cell)
 
             if self._kernel_client is None:
@@ -126,8 +117,11 @@ class Kernel(W.Widget):
     @run_on_executor
     def client(self):
         km = self._kernel_manager
+        asyncio.set_event_loop(asyncio.new_event_loop())
         if km is None:
-            km = IOLoopKernelManager(kernel_name=self.name)
+            km = IOLoopKernelManager(
+                kernel_name=self.name, loop=IOLoop.instance()
+            )
             self._kernel_manager = km
 
         km.start_kernel()
@@ -148,53 +142,43 @@ class Kernel(W.Widget):
         self.run(shutdown=shutdown)
         return self
 
-    def view(self, view_klass=None):
-        return (view_klass or self._view_klass)(kernel=self)
-
     def _make_handler(self, cell=None):
         def _on_msg(msg):
-            msg_type = msg['header']['msg_type']
-
+            msg_type = msg["header"]["msg_type"]
             handler = getattr(self, "on_msg_{}".format(msg_type), None)
 
             if handler is not None:
-                handler(msg,
-                        cell or getattr(self, "_current_cell"),
-                        msg["content"])
+                handler(msg, cell or self._current_cell, msg["content"])
             else:
-                self.log.warn(f"UNHANDLED MSG TYPE: {msg_type}\n---\n%s\n%s",
-                              pformat(msg),
-                              f"You should implement on_msg_{msg_type}")
+                self.log.warn(
+                    f"UNHANDLED MSG TYPE: {msg_type}\n---\n%s\n%s",
+                    pformat(msg),
+                    f"You should implement on_msg_{msg_type}",
+                )
+
         return _on_msg
 
     @run_on_executor
     def run_one(self, cell):
-        msg_id = self._kernel_client.execute(
-            "\n".join(cell["source"])
-        )
+        msg_id = self._kernel_client.execute(cell.source)
         return msg_id
 
     def on_msg_stream(self, msg, cell, content):
-        if content["name"] == "stdout":
-            self.stdout += content["text"],
-        elif content["name"] == "stderr":
-            self.stderr += content["text"],
-        else:
-            self.log.warning(f"UNHANDLED STREAM {content.name}", msg)
+        cell.outputs += (NB.Stream(output_type="stream", **content),)
 
     def on_msg_execute_result(self, msg, cell, content):
-        cell["outputs"] += [{
-            "data": content["data"],
-            "output_type": "execute_result",
-            "metadata": {}
-        }]
+        cell.outputs += (
+            NB.ExecuteResult(output_type="execute_result", **content),
+        )
 
     def on_msg_display_data(self, msg, cell, content):
-        cell["outputs"] += [{
-            "data": content["data"],
-            "output_type": "display_data",
-            "metadata": {}
-        }]
+        # print("CONTENT", content)
+        cell.outputs += (
+            NB.DisplayData(output_type="display_data", **content),
+        )
+
+    def on_msg_error(self, msg, cell, content):
+        cell.outputs += (NB.Error(output_type="error", **content),)
 
     def on_msg_status(self, msg, cell, content):
         self.execution_state = content["execution_state"]
@@ -211,14 +195,32 @@ class Kernel(W.Widget):
     def on_msg_comm_open(self, msg, cell, content):
         comm_id = content["comm_id"]
         state, buffer_paths, buffers = W.widgets.widget._remove_buffers(
-            content["data"]["state"])
+            content["data"]["state"]
+        )
+
+        def _sub_widget(obj):
+            if isinstance(obj, dict):
+                return {k: _sub_widget(c) for k, c in obj.items()}
+            elif isinstance(obj, str):
+                if obj.startswith("IPY_MODEL_"):
+                    obj_id = obj.split("_")[2]
+                    subwidget = W.Widget.widgets.get(obj_id)
+                    self.widgets += (subwidget,)
+                    return subwidget
+                return obj
+            elif isinstance(obj, list):
+                return [_sub_widget(c) for c in obj]
+            else:
+                return obj
+
+        _sub_widget(state)
 
         comm = W.widgets.widget.Comm(
             comm_id=comm_id,
-            target_name='jupyter.widget',
-            data={'state': state, 'buffer_paths': buffer_paths},
+            target_name="jupyter.widget",
+            data={"state": state, "buffer_paths": buffer_paths},
             buffers=buffers,
-            metadata={'version': W._version.__protocol_version__}
+            metadata={"version": W._version.__protocol_version__},
         )
         W.Widget.handle_comm_opened(comm, msg)
         widget = W.Widget.widgets[comm_id]
@@ -228,21 +230,42 @@ class Kernel(W.Widget):
             if self._kernel_client is None:
                 return
 
-            update_msg = self._kernel_client.session.msg("comm_msg", {
-                "comm_id": widget.comm.comm_id,
-                "data": {
-                    "method": "update",
-                    "state": {
-                        change["name"]: change["new"]
+            update_msg = self._kernel_client.session.msg(
+                "comm_msg",
+                {
+                    "comm_id": widget.comm.comm_id,
+                    "data": {
+                        "method": "update",
+                        "state": {change["name"]: change["new"]},
+                        "buffer_paths": [],
                     },
-                    "buffer_paths": []
-                }
-            })
+                },
+            )
 
             def _send():
                 self._kernel_client.shell_channel.send(update_msg)
 
             IOLoop.instance().add_callback(_send)
+
+        if isinstance(widget, W.Button):
+
+            @widget.on_click
+            def on_click(evt):
+                click_msg = self._kernel_client.session.msg(
+                    "comm_msg",
+                    {
+                        "comm_id": widget.comm.comm_id,
+                        "data": {
+                            "method": "custom",
+                            "content": {"event": "click"},
+                        },
+                    },
+                )
+
+                def _send():
+                    self._kernel_client.shell_channel.send(click_msg)
+
+                IOLoop.instance().add_callback(_send)
 
         self.widgets += (widget,)
 
@@ -253,14 +276,8 @@ class Kernel(W.Widget):
                 if widget.comm.comm_id == content["comm_id"]:
                     for k, v in content["data"]["state"].items():
                         setattr(widget, k, v)
-
         else:
-            self.log.warning(f"UNKNOWN METHOD {method}\n---\n%s",
-                             pformat(msg))
+            self.log.warning(f"UNKNOWN METHOD {method}\n---\n%s", pformat(msg))
 
-    def on_msg_error(self, msg, cell, content):
-        self.log.error(f"ERROR\n---\n%s",
-                       pformat(msg))
-
-    def on_msg_shutdown_replay(self, msg, cell, content):
+    def on_msg_shutdown_reply(self, msg, cell, content):
         self.execution_state = "shutdown"

@@ -6,8 +6,8 @@ def check_path(file_name):
     """ Safely cast a path within `cwd`
     """
     root = Path(".")
-    file_path = (root / "{}.ipynb".format(file_name))
-    if root not in file_path.parents or not file_path.exists():
+    file_path = root / "{}.ipynb".format(file_name)
+    if root not in file_path.parents:
         raise ValueError("load failed")
     return file_path
 
@@ -32,5 +32,4 @@ def load_notebook(file_name):
     """ a convenience wrapper around a "safe" notebook load
     """
     file_path = check_path(file_name)
-
     return reads(file_path.read_text())

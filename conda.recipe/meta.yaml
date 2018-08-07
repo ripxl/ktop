@@ -2,25 +2,24 @@
 {% set version = "0.1.0" %}
 
 package:
-  name: {{ name|lower }}
+  name: {{ name }}
   version: {{ version }}
 
 source:
-  path: ..
+  git_url: ..
 
 build:
   number: 0
-  script: python setup.py install --single-version-externally-managed --record record.txt
+  noarch: python
+  script: {{ PYTHON }} -m pip install . --no-deps --ignore-installed
   skip: true  # [py2k]
 
 requirements:
   build:
     - python
-    - setuptools
+    - pip
   run:
     - ipywidgets
-    - jupyterlab
-    - notebook
     - python
 
 test:
@@ -28,22 +27,8 @@ test:
     - ktop
 
 about:
-  home: https://ripxl.github.io/ktop
+  home: https://github.com/deathbeds/ktop
   license: BSD-3-Clause
   license_family: BSD
   license_file: LICENSE
-  summary: Treat Multiple Notebooks and Kernels like code
-
-  description: |
-    `ktop` gives you reactive Notebooks and Kernels:
-    - create, open, and save notebooks on-the-fly in memory, or on disk
-    - modify and execute cells in one or more kernels
-    - react to conditions in running kernels
-    - view and link to remote Widgets
-  doc_url: http://ripxl.github.io/ktop
-  dev_url: https://github.com/ripxl/ktop
-
-extra:
-  recipe-maintainers:
-    - bollwyvl
-    - tonyfast
+  summary: Use Jupyter Notebooks and Kernels as Widgets

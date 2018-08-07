@@ -1,7 +1,7 @@
 # ktop
-> Treat Multiple Notebooks and Kernels like code
+> Use Jupyter Notebooks and Kernels as Widgets
 
-`ktop` gives you reactive Notebooks and Kernels :
+`ktop` gives you reactive Notebooks and Kernels:
 - create, open, and save notebooks on-the-fly in memory, or on disk
 - modify and execute cells in one or more kernels
 - react to conditions in running kernels
@@ -10,24 +10,31 @@
 # Installation
 > TBD
 
-# developing
-```
-git clone https://github.com/ripxl/ktop
-cd ktop
-conda env update -v --file environment-dev.yml
-conda env update -v --file environment-jupyter.yml
-source activate ktop-dev
-python setup.py develop
-# for now, to ensure a working jupyterlab with widgets
-jupyter labextension install @jupyter-widgets/jupyterlab-manager
-jupyter labextension install bqplot
+# Usage
+## Run a notebook.
+```python
+import ktop
+nb = ktop.Notebook()
+nb.nbformat.cells = ktop.Code("print('hello world')")
+k = nb.run_one()
+# ... wait a while
+print(k.nbformat.cells[0].outputs)
 ```
 
-# API
-## `Notebook`
-### `run([cells=None])`
-### `save()`
+## Run a couple kernels
+```python
+for world in "☿♀🜨♂♃♄⛢♆":
+    k = nb.run_one()
+    k.nbformat.cells[0].source = f"print('hello {world}')"
+# ... wait a while
+for k in nb.kernels:
+    print(k.nbformat.cells[0].outputs)
+```
 
-## `Kernel`
-### `view(widget=DefaultKernelView)`
-### `save()`
+# Developing
+```
+git clone https://github.com/deathbeds/ktop
+conda env update
+source activate ktop-demo
+bash postBuild
+```
