@@ -248,6 +248,7 @@ class Kernel(W.Widget):
             IOLoop.instance().add_callback(_send)
 
         if isinstance(widget, W.Button):
+
             @widget.on_click
             def on_click(evt):
                 click_msg = self._kernel_client.session.msg(
@@ -256,9 +257,7 @@ class Kernel(W.Widget):
                         "comm_id": widget.comm.comm_id,
                         "data": {
                             "method": "custom",
-                            "content": {
-                                "event": "click"
-                            }
+                            "content": {"event": "click"},
                         },
                     },
                 )
