@@ -23,9 +23,11 @@ class Notebook(W.Widget):
     kernels = T.Tuple([]).tag(sync=True, **W.widget_serialization)
     kernel_count = T.Integer(0).tag(sync=True)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, file_name=None, *args, **kwargs):
         kwargs["nbformat"] = kwargs.get("nbformat") or NBFormat()
+        kwargs["file_name"] = file_name
         super(Notebook, self).__init__(*args, **kwargs)
+        self.load()
 
     def run_one(
         self,

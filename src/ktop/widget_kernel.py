@@ -198,30 +198,22 @@ class Kernel(W.Widget):
             content["data"]["state"]
         )
 
-        # as_json = from_json(state, state)
-        # print("AS_JSON")
-        # print(as_json)
+        def _sub_widget(obj):
+            if isinstance(obj, dict):
+                return {k: _sub_widget(c) for k, c in obj.items()}
+            elif isinstance(obj, str):
+                if obj.startswith("IPY_MODEL_"):
+                    obj_id = obj.split("_")[2]
+                    subwidget = W.Widget.widgets.get(obj_id)
+                    self.widgets += (subwidget,)
+                    return subwidget
+                return obj
+            elif isinstance(obj, list):
+                return [_sub_widget(c) for c in obj]
+            else:
+                return obj
 
-        # def _sub_widget(obj):
-        #     if isinstance(obj, dict):
-        #         return {k: _sub_widget(c) for k, c in obj.items()}
-        #     elif isinstance(obj, str):
-        #         # print("OBJ", obj)
-        #         if obj.startswith("IPY_MODEL_"):
-        #             # print("OBJ_ID", obj[10:])
-        #             obj_id = obj.split("_")[2]
-        #             subwidget = W.Widget.widgets.get(obj_id)
-        #             self.widgets += (subwidget,)
-        #             return subwidget
-        #         return obj
-        #     elif isinstance(obj, list):
-        #         return [_sub_widget(c) for c in obj]
-        #     else:
-        #         return obj
-
-        # so for bqplot, there are these deep things
-        # subbed = _sub_widget(state)
-        # print("SUBBED", subbed)
+        _sub_widget(state)
 
         comm = W.widgets.widget.Comm(
             comm_id=comm_id,
@@ -255,6 +247,27 @@ class Kernel(W.Widget):
 
             IOLoop.instance().add_callback(_send)
 
+        if isinstance(widget, W.Button):
+            @widget.on_click
+            def on_click(evt):
+                click_msg = self._kernel_client.session.msg(
+                    "comm_msg",
+                    {
+                        "comm_id": widget.comm.comm_id,
+                        "data": {
+                            "method": "custom",
+                            "content": {
+                                "event": "click"
+                            }
+                        },
+                    },
+                )
+
+                def _send():
+                    self._kernel_client.shell_channel.send(click_msg)
+
+                IOLoop.instance().add_callback(_send)
+
         self.widgets += (widget,)
 
     def on_msg_comm_msg(self, msg, cell, content):
@@ -264,7 +277,6 @@ class Kernel(W.Widget):
                 if widget.comm.comm_id == content["comm_id"]:
                     for k, v in content["data"]["state"].items():
                         setattr(widget, k, v)
-
         else:
             self.log.warning(f"UNKNOWN METHOD {method}\n---\n%s", pformat(msg))
 
